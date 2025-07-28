@@ -6,6 +6,12 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    ignore_joint_limits_arg = DeclareLaunchArgument(
+        "ignore_joint_limits",
+        default_value="False",
+        description="If set to true, watchdog won't enforce joint position limits",
+    )
+
     watchdog_config_filepath = PathJoinSubstitution(
         [FindPackageShare("go2_control_interface"), "config", "default_limits.yaml"]
     )
@@ -20,6 +26,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            ignore_joint_limits_arg,
             n_fails_arg,
             freq_arg,
             Node(
@@ -30,6 +37,7 @@ def generate_launch_description():
                 parameters=[
                     watchdog_config_filepath,
                     {
+                        "ignore_joint_limits": LaunchConfiguration("ignore_joint_limits"),
                         "n_fails": LaunchConfiguration("n_fails"),
                         "freq": LaunchConfiguration("freq"),
                     },

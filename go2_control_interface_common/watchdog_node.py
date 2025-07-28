@@ -35,15 +35,15 @@ class WatchDogNode(Node, Go2RobotInterface):
         # Watchdog timer parameters
         self.freq = self.declare_parameter("freq", 100).value
         self.n_fail = self.declare_parameter("n_fail", 2).value
+        self.ignore_joint_limits = self.node.declare_parameter("ignore_joint_limits", False).value
 
         # Safety values
-        self.q_max = self.declare_parameter("q_max", rclpy.Parameter.Type.DOUBLE_ARRAY).value
-        self.q_min = self.declare_parameter("q_min", rclpy.Parameter.Type.DOUBLE_ARRAY).value
-        self.margin_duration = self.declare_parameter("margin_duration", rclpy.Parameter.Type.DOUBLE_ARRAY).value
+        self.q_max = self.declare_parameter("q_max", [0.0]).value
+        self.q_min = self.declare_parameter("q_min", [0.0]).value
+        self.dq_max = self.declare_parameter("dq_max", -1.0).value
         assert len(self.q_max) == 12, "Parameter q_max should be length 12"
         assert len(self.q_min) == 12, "Parameter q_min should be length 12"
-        assert len(self.margin_duration) == 12, "Parameter margin_duration should be length 12"
-        assert all(d >= 0.0 for d in self.margin_duration), "Parameter margin_duration should be non negative"
+        assert self.dq_max >= 0.0, "Parameter dq_max should be non negative"
 
         # Watchdog timer logic
         self.cnt = 0
@@ -54,7 +54,8 @@ class WatchDogNode(Node, Go2RobotInterface):
         self.start_subscription = self.create_subscription(Bool, "/watchdog/arm", self.__arm_disarm_cb, 10)
         self.timer = self.create_timer(1.0 / self.freq, self.timer_callback)
 
-        self.register_callback(self.__state_cb)
+        if not self.ignore_joint_limits:
+            self.register_callback(self.__state_cb)
 
         self._is_safe_publisher = self.create_publisher(
             Bool, "/watchdog/is_safe", QoSProfile(depth=10, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
@@ -76,20 +77,21 @@ class WatchDogNode(Node, Go2RobotInterface):
 
     def __state_cb(self, t, q, dq, ddq):
         # Joint bounds
-        q_max_bound = [
-            q_i + dt_i * dq_i > q_max_i for q_i, dq_i, dt_i, q_max_i in zip(q, dq, self.margin_duration, self.q_max)
-        ]
-        q_min_bound = [
-            q_i + dt_i * dq_i < q_min_i for q_i, dq_i, dt_i, q_min_i in zip(q, dq, self.margin_duration, self.q_min)
-        ]
+        q_max_bound = [q_i > self.q_max[i] for i, q_i in enumerate(q)]
+        q_min_bound = [q_i < self.q_min[i] for i, q_i in enumerate(q)]
+        dq_max_bound = [abs(dq_i) > self.dq_max for dq_i in dq]
 
         if any(q_max_bound):
             self._stop_robot(
-                f"Watch-dog detect joint {[i for i, b in enumerate(q_max_bound) if b]} out of bounds. (max q, dq)"
+                f"Watch-dog detect joint {[i for i, b in enumerate(q_max_bound) if b]} out of bounds. (max q)"
             )
         if any(q_min_bound):
             self._stop_robot(
-                f"Watch-dog detect joint {[i for i, b in enumerate(q_min_bound) if b]} out of bounds. (min q, dq)"
+                f"Watch-dog detect joint {[i for i, b in enumerate(q_min_bound) if b]} out of bounds. (min q)"
+            )
+        if any(dq_max_bound):
+            self._stop_robot(
+                f"Watch-dog detect joint {[i for i, b in enumerate(dq_max_bound) if b]} out of bounds. (max dq)"
             )
         # TODO: Add check on tau (look at cmd ??)
 
