@@ -48,7 +48,7 @@ source install/setup.bash
 * C. Build all remaining packages
 
 ```bash
-colcon build --packages-skip unitree_sdk2_python
+colcon build --packages-skip unitree_sdk2py
 ```
 
 6. Source the environment
