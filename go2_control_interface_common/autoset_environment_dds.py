@@ -14,7 +14,8 @@ class Go2EnvSetup:
         if sim:
             self.output("unset RMW_IMPLEMENTATION")
             self.output("unset CYCLONEDDS_URI")
-            self.output("export ROS_LOCALHOST_ONLY=1")
+            self.output("export ROS_LOCALHOST_ONLY=0")
+            self.output("export ROS_DOMAIN_ID=210")
 
         else:
             self.output("export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp")
