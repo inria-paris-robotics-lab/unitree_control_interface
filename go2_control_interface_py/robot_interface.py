@@ -21,6 +21,8 @@ class Go2RobotInterface:
         ] # re-ordering joints
     # fmt: on
 
+    NA = 12
+
     def __init__(self, node: Node, *, joints_filter_fq_default=-1.0):
         self.is_ready = False
         self.is_safe = False
@@ -88,7 +90,7 @@ class Go2RobotInterface:
             self.node.get_logger().info("Go2RobotInterface: Start configuration reached.")
         else:
             self.node.get_logger().info("Go2RobotInterface: Skipping start configuration, set command to zero")
-            zeros = [0.0] * 12
+            zeros = [0.0] * self.N_DOF
             self._send_command(zeros, zeros, zeros, zeros, zeros, 0.0)
         self.is_ready = True
 
@@ -102,11 +104,11 @@ class Go2RobotInterface:
     def _send_command(
         self, q: List[float], v: List[float], tau: List[float], kp: List[float], kd: List[float], scaling: Bool = True
     ):
-        assert len(q) == 12, "Wrong configuration size"
-        assert len(v) == 12, "Wrong configuration size"
-        assert len(tau) == 12, "Wrong configuration size"
-        assert len(kp) == 12, "Wrong configuration size"
-        assert len(kd) == 12, "Wrong configuration size"
+        assert len(q) == self.N_DOF, "Wrong configuration size"
+        assert len(v) == self.N_DOF, "Wrong configuration size"
+        assert len(tau) == self.N_DOF, "Wrong configuration size"
+        assert len(kp) == self.N_DOF, "Wrong configuration size"
+        assert len(kd) == self.N_DOF, "Wrong configuration size"
 
         msg = LowCmd()
 
@@ -120,7 +122,7 @@ class Go2RobotInterface:
         msg.bandwidth = 0
         msg.fan = 0, 0
         msg.reserve = 0
-        msg.led = [0] * 12
+        msg.led = [0] * self.N_DOF
 
         # battery
         msg.bms_cmd.off = 0
@@ -135,7 +137,7 @@ class Go2RobotInterface:
         # Scaling
         k_ratio = self.scaling_gain * self.scaling_glob if scaling else 1.0
         ff_ratio = self.scaling_ff * self.scaling_glob if scaling else 1.0
-        for i in range(12):
+        for i in range(self.N_DOF):
             i_urdf = self.__unitree_to_urdf_index[i]  # Re-order joints
 
             msg.motor_cmd[i].mode = 0x01  # Set toque mode
@@ -145,7 +147,7 @@ class Go2RobotInterface:
             msg.motor_cmd[i].kp = k_ratio * kp[i_urdf]
             msg.motor_cmd[i].kd = k_ratio * kd[i_urdf]
 
-        for i in range(12, 20):  # Unused motors
+        for i in range(self.N_DOF, 20):  # Unused motors
             msg.motor_cmd[i].mode = 0x00  # Set passive mode
             msg.motor_cmd[i].q = 0.0
             msg.motor_cmd[i].dq = 0.0
@@ -167,22 +169,22 @@ class Go2RobotInterface:
         last_tqva = self.last_state_tqva
         if last_tqva is None or self.filter_fq <= 0.0:
             # No filtering to do on first point
-            v_prev = last_tqva[2] if last_tqva is not None else [0.0] * 12
+            v_prev = last_tqva[2] if last_tqva is not None else [0.0] * self.N_DOF
             a_finite_diff = [
-                self.robot_fq * (v_urdf[i] - v_prev[i]) for i in range(12)
+                self.robot_fq * (v_urdf[i] - v_prev[i]) for i in range(self.N_DOF)
             ]  # Do that operation first to have the previous v
 
             self.last_state_tqva = t, q_urdf, v_urdf, a_finite_diff
         else:
             t_prev, q_prev, v_prev, a_prev = last_tqva
-            # Filtered derivative (https://fr.mathworks.com/help/sps/ref/filteredderivativediscreteorcontinuous.html#d126e104759)
+            # Filtered derivative (https://fr.mathworks.com/help/sps/ref/filteredderivativediscreteorcontinuous.html#dself.N_DOF6e104759)
             a_filter = [
-                self.filter_fq * (v_urdf[i] - v_prev[i]) for i in range(12)
+                self.filter_fq * (v_urdf[i] - v_prev[i]) for i in range(self.N_DOF)
             ]  # Do that operation first to have the previous v
 
             alpha = self.filter_fq / self.robot_fq
-            q_filter = [(1 - alpha) * q_prev[i] + alpha * q_urdf[i] for i in range(12)]
-            v_filter = [(1 - alpha) * v_prev[i] + alpha * v_urdf[i] for i in range(12)]
+            q_filter = [(1 - alpha) * q_prev[i] + alpha * q_urdf[i] for i in range(self.N_DOF)]
+            v_filter = [(1 - alpha) * v_prev[i] + alpha * v_urdf[i] for i in range(self.N_DOF)]
 
             self.last_state_tqva = t, q_filter, v_filter, a_filter
 
@@ -206,8 +208,8 @@ class Go2RobotInterface:
             ratio = (t - t_start).nanoseconds / (duration * 1e9)
             ratio = min(ratio, 1)
 
-            q_des = [q_start[i] + (q_goal[i] - q_start[i]) * ratio for i in range(12)]
-            self._send_command(q_des, [0.0] * 12, [0.0] * 12, [150.0] * 12, [1.0] * 12)
+            q_des = [q_start[i] + (q_goal[i] - q_start[i]) * ratio for i in range(self.N_DOF)]
+            self._send_command(q_des, [0.0] * self.N_DOF, [0.0] * self.N_DOF, [150.0] * self.N_DOF, [1.0] * self.N_DOF)
 
             if ratio == 1:
                 break
