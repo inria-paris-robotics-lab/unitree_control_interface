@@ -4,7 +4,7 @@ from rclpy.duration import Duration
 from rcl_interfaces.msg import ParameterDescriptor
 
 from typing import List, Callable
-from unitree_go.msg import LowCmd, LowState
+from unitree_hg.msg import LowCmd, LowState
 from std_msgs.msg import Bool
 from unitree_sdk2py.utils.crc import CRC
 import threading
@@ -13,15 +13,10 @@ import threading
 class Go2RobotInterface:
     # TODO: Populate this array programmatically
     # fmt: off
-    __unitree_to_urdf_index = [
-            3,  4,  5,
-            0,  1,  2,
-            9, 10, 11,
-            6,  7,  8,
-        ] # re-ordering joints
+    __unitree_to_urdf_index = [i for i in range(27)] # re-ordering joints
     # fmt: on
 
-    NA = 12
+    N_DOF = 27
 
     def __init__(self, node: Node, *, joints_filter_fq_default=-1.0):
         self.is_ready = False
@@ -113,26 +108,8 @@ class Go2RobotInterface:
         msg = LowCmd()
 
         # Init header
-        msg.head = 0xFE, 0xEF
-
-        # Unused fields
-        msg.level_flag = 0
-        msg.frame_reserve = 0
-        msg.sn = 0, 0
-        msg.bandwidth = 0
-        msg.fan = 0, 0
-        msg.reserve = 0
-        msg.led = [0] * self.N_DOF
-
-        # battery
-        msg.bms_cmd.off = 0
-        msg.bms_cmd.reserve = 0, 0, 0
-
-        # Version
-        msg.sn = 0, 0
-
-        # Gpio
-        msg.gpio = 0
+        msg.mode_pr = 0  # Parallel mechanism (ankle and waist) control mode (default 0) 0:PR, 1:AB
+        msg.mode_machine = 6  # G1 Type：4：23-Dof;5:29-Dof;6:27-Dof(29Dof Fitted at the waist)
 
         # Scaling
         k_ratio = self.scaling_gain * self.scaling_glob if scaling else 1.0
@@ -157,7 +134,7 @@ class Go2RobotInterface:
 
         # Compute CRC here
         # TODO: Cleaner CRC computation
-        msg.crc = self.crc._CRC__Crc32(self.crc._CRC__PackLowCmd(msg))
+        msg.crc = self.crc._CRC__Crc32(self.crc._CRC__PackHGLowCmd(msg))
         self._cmd_publisher.publish(msg)
 
     def __state_cb(self, msg: LowState):
