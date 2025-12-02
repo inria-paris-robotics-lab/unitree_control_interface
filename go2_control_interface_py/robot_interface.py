@@ -13,7 +13,13 @@ import threading
 class Go2RobotInterface:
     # TODO: Populate this array programmatically
     # fmt: off
-    __unitree_to_urdf_index = [i for i in range(27)] # re-ordering joints
+    __urdf_to_unitree_index = (
+        0, 1, 2, 3,  4,  5,         # left leg
+        6, 7, 8, 9, 10, 11,         # right leg
+        12,                         # waist
+        15, 16 ,17, 18 ,19, 20, 21, # left arm
+        22, 23, 24, 25, 26, 27, 28  # right arm
+    )
     # fmt: on
 
     N_DOF = 27
@@ -114,23 +120,13 @@ class Go2RobotInterface:
         # Scaling
         k_ratio = self.scaling_gain * self.scaling_glob if scaling else 1.0
         ff_ratio = self.scaling_ff * self.scaling_glob if scaling else 1.0
-        for i in range(self.N_DOF):
-            i_urdf = self.__unitree_to_urdf_index[i]  # Re-order joints
-
-            msg.motor_cmd[i].mode = 0x01  # Set toque mode
-            msg.motor_cmd[i].q = q[i_urdf]
-            msg.motor_cmd[i].dq = v[i_urdf]
-            msg.motor_cmd[i].tau = ff_ratio * tau[i_urdf]
-            msg.motor_cmd[i].kp = k_ratio * kp[i_urdf]
-            msg.motor_cmd[i].kd = k_ratio * kd[i_urdf]
-
-        for i in range(self.N_DOF, 20):  # Unused motors
-            msg.motor_cmd[i].mode = 0x00  # Set passive mode
-            msg.motor_cmd[i].q = 0.0
-            msg.motor_cmd[i].dq = 0.0
-            msg.motor_cmd[i].tau = 0.0
-            msg.motor_cmd[i].kp = 0.0
-            msg.motor_cmd[i].kd = 0.0
+        for i_urdf, i_unitree in enumerate(self.__urdf_to_unitree_index):
+            msg.motor_cmd[i_unitree].mode = 0x01  # Set toque mode
+            msg.motor_cmd[i_unitree].q = q[i_urdf]
+            msg.motor_cmd[i_unitree].dq = v[i_urdf]
+            msg.motor_cmd[i_unitree].tau = ff_ratio * tau[i_urdf]
+            msg.motor_cmd[i_unitree].kp = k_ratio * kp[i_urdf]
+            msg.motor_cmd[i_unitree].kd = k_ratio * kd[i_urdf]
 
         # Compute CRC here
         # TODO: Cleaner CRC computation
@@ -139,9 +135,9 @@ class Go2RobotInterface:
 
     def __state_cb(self, msg: LowState):
         t = self.node.get_clock().now().nanoseconds / 1.0e9
-        q_urdf = [msg.motor_state[i].q for i in self.__unitree_to_urdf_index]
-        v_urdf = [msg.motor_state[i].dq for i in self.__unitree_to_urdf_index]
-        # a_urdf = [msg.motor_state[i].ddq for i in self.__unitree_to_urdf_index] # Not populated by unitree
+        q_urdf = [msg.motor_state[i_unitree].q for i_unitree in self.__urdf_to_unitree_index]
+        v_urdf = [msg.motor_state[i_unitree].dq for i_unitree in self.__urdf_to_unitree_index]
+        # a_urdf = [msg.motor_state[i].ddq for i in self.__urdf_to_unitree_index] # Not populated by unitree
 
         last_tqva = self.last_state_tqva
         if last_tqva is None or self.filter_fq <= 0.0:
@@ -190,12 +186,6 @@ class Go2RobotInterface:
 
             if ratio == 1:
                 break
-
-    def _unitree_to_urdf_index(self, i):
-        return self.__unitree_to_urdf_index[i]
-
-    def _urdf_to_unitree_index(self, i):
-        return self.__unitree_to_urdf_index.index(i)
 
     def __safety_cb(self, msg):
         self.is_safe = msg.data
