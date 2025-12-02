@@ -1,6 +1,5 @@
 watchdog:
   ros__parameters:
-    # FL, FR, RL, RR
     q_max: [
         2.8798,
         2.9671,
@@ -58,6 +57,6 @@ watchdog:
             -1.614429558,
             -1.614429558
             ]
-        # Extracted from go2_description urdf
-    margin_duration: [0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06]
+        # Extracted from g1_description urdf
+    margin_duration: [0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03]
         # See https://github.com/inria-paris-robotics-lab/go2_control_interface/issues/11#issuecomment-2995477021

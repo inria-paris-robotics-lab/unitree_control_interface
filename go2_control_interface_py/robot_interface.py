@@ -16,7 +16,7 @@ class Go2RobotInterface:
     __urdf_to_unitree_index = (
         0, 1, 2, 3,  4,  5,         # left leg
         6, 7, 8, 9, 10, 11,         # right leg
-        12,                         # waist
+        12,                         # waist (here the two locked DoF - 13 and 14 - are skipped)
         15, 16 ,17, 18 ,19, 20, 21, # left arm
         22, 23, 24, 25, 26, 27, 28  # right arm
     )
@@ -182,7 +182,7 @@ class Go2RobotInterface:
             ratio = min(ratio, 1)
 
             q_des = [q_start[i] + (q_goal[i] - q_start[i]) * ratio for i in range(self.N_DOF)]
-            self._send_command(q_des, [0.0] * self.N_DOF, [0.0] * self.N_DOF, [150.0] * self.N_DOF, [1.0] * self.N_DOF)
+            self._send_command(q_des, [0.0] * self.N_DOF, [0.0] * self.N_DOF, [50.0] * self.N_DOF, [1.0] * self.N_DOF)
 
             if ratio == 1:
                 break
