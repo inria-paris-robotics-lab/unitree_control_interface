@@ -59,7 +59,8 @@ class MyApp(
         model = self.model_handler.getModel()
         data = self.data_handler.getData()
         base_frame_id = model.getFrameId("torso_link")
-        foot_frame_id = model.getFrameId("left_ankle_roll_link")
+        left_foot_frame_id = model.getFrameId("left_ankle_roll_link")
+        right_foot_frame_id = model.getFrameId("right_ankle_roll_link")
 
         q_full = pin.neutral(model)
         q_full[7:] = q
@@ -69,17 +70,22 @@ class MyApp(
         pin.forwardKinematics(model, data, q_full, dq_full)
         pin.updateFramePlacements(model, data)
 
-        oMfoot = data.oMf[foot_frame_id]
+        oMleftfoot = data.oMf[left_foot_frame_id]
+        oMrightfoot = data.oMf[right_foot_frame_id]
         oMbase = data.oMf[base_frame_id]
 
-        footMbase = oMfoot.actInv(oMbase)
+        leftfootMbase = oMleftfoot.actInv(oMbase)
+        rightfootMbase = oMrightfoot.actInv(oMbase)
 
-        w_v_foot = pin.getFrameVelocity(model, data, foot_frame_id, pin.ReferenceFrame.WORLD)
+        feetMbase = pin.exp((pin.log(leftfootMbase) + pin.log(rightfootMbase)) / 2.0)
+
+        w_v_leftfoot = pin.getFrameVelocity(model, data, left_foot_frame_id, pin.ReferenceFrame.WORLD)
+        w_v_rightfoot = pin.getFrameVelocity(model, data, right_foot_frame_id, pin.ReferenceFrame.WORLD)
         w_v_base = pin.getFrameVelocity(model, data, base_frame_id, pin.ReferenceFrame.WORLD)
-        w_v_foot_base = w_v_base - w_v_foot
-        v_foot_base = oMbase.actInv(w_v_foot_base)
+        w_v_feet_base = w_v_base - (w_v_leftfoot + w_v_rightfoot) / 2.0
+        v_feet_base = oMbase.actInv(w_v_feet_base)
 
-        return pin.SE3ToXYZQUAT(footMbase), v_foot_base.vector
+        return pin.SE3ToXYZQUAT(feetMbase), v_feet_base.vector
 
     def _sensor_reading_callback(self, t, q, dq, ddq):
         # Reading timestamp, positions, velocities, accelerations
