@@ -27,6 +27,7 @@ class Go2RobotInterface:
     def __init__(self, node: Node, *, joints_filter_fq_default=-1.0):
         self.is_ready = False
         self.is_safe = False
+        self._unlock = False
 
         self.node = node
 
@@ -75,6 +76,16 @@ class Go2RobotInterface:
         thread = threading.Thread(target=self._start_routine, args=(q_start, goto_config), daemon=True)
         thread.start()
 
+    def unlock(self):
+        """
+        Unlock the robot after `start_async` is called with `goto_config` set to True.
+        The robot will stay (in position control) at the start configuration, until this `unlock` method is called.
+        Consequently, the `is_ready` flag will be set ot True only after this method is called (or if `goto_config` is set to False)
+        """
+        if not self._unlock:
+            self.node.get_logger().info("Go2RobotInterface: Unlocking robot.")
+        self._unlock = True
+
     def _start_routine(self, q_start: List[float], goto_config=True):
         # Arm watchdog
         arm_watchdog_msg = Bool()
@@ -87,13 +98,17 @@ class Go2RobotInterface:
 
         if goto_config:
             self.node.get_logger().info("Go2RobotInterface: Going to start configuration...")
-            self._go_to_configuration__(q_start, 5.0)
-            self.node.get_logger().info("Go2RobotInterface: Start configuration reached.")
+            success = self._go_to_configuration__(q_start, 5.0)
+            if success:
+                self.node.get_logger().info("Go2RobotInterface: Start configuration reached.")
+            else:
+                self.node.get_logger().error("Go2RobotInterface: Start configuration not reached.")
+            self.is_ready = success
         else:
             self.node.get_logger().info("Go2RobotInterface: Skipping start configuration, set command to zero")
             zeros = [0.0] * self.N_DOF
             self._send_command(zeros, zeros, zeros, zeros, zeros, 0.0)
-        self.is_ready = True
+            self.is_ready = True
 
     def send_command(self, q: List[float], v: List[float], tau: List[float], kp: List[float], kd: List[float]):
         assert self.is_ready, (
@@ -165,27 +180,46 @@ class Go2RobotInterface:
             self.user_cb(*self.last_state_tqva)
 
     def _go_to_configuration__(self, q: List[float], duration: float):
+        # Wait for first configuration (a.k.a robot state) to be received
         for i in range(5):
             if self.last_state_tqva is not None:
                 break
-            self.node.get_clock().sleep_for(Duration(seconds=0.5))  # Wait for first configuration to be received
+            self.node.get_clock().sleep_for(Duration(seconds=0.5))
         else:
             assert False, "Robot state not received in time for initialization of interface."
 
+        # Start and goal configurations
         q_goal = q
         _, q_start, _, _ = self.last_state_tqva
 
-        t_start = self.node.get_clock().now()
+        # Motor commands
+        q_des = [0.0] * self.N_DOF
+        v_des = [0.0] * self.N_DOF
+        a_des = [0.0] * self.N_DOF
+        kp = [50.0] * self.N_DOF
+        kd = [1.0] * self.N_DOF
+
+        # Main loop
+        clock = self.node.get_clock()
+        t_start = clock.now()
+        rate = self.node.create_rate(self.robot_fq)
         while rclpy.ok() and self.is_safe:
-            t = self.node.get_clock().now()
+            t = clock.now()
             ratio = (t - t_start).nanoseconds / (duration * 1e9)
-            ratio = min(ratio, 1)
+            ratio = min(ratio, 1.0)
 
-            q_des = [q_start[i] + (q_goal[i] - q_start[i]) * ratio for i in range(self.N_DOF)]
-            self._send_command(q_des, [0.0] * self.N_DOF, [0.0] * self.N_DOF, [50.0] * self.N_DOF, [1.0] * self.N_DOF)
+            # Interpolate solution
+            for i in range(self.N_DOF):
+                q_des[i] = q_start[i] + (q_goal[i] - q_start[i]) * ratio
 
-            if ratio == 1:
-                break
+            self._send_command(q_des, v_des, a_des, kp, kd)
+
+            # Unlock the robot if goal configuration is reached and user gave signal
+            if ratio >= 1.0 and self._unlock:
+                return True
+            rate.sleep()
+
+        return False
 
     def __safety_cb(self, msg):
         self.is_safe = msg.data
