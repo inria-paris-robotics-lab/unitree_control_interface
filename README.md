@@ -123,6 +123,7 @@ Here is the boilerplate/example code to write your app
 import rclpy
 from rclpy.node import Node
 from go2_control_interface_py.robot_interface import Go2RobotInterface
+from rclpy.executors import MultiThreadedExecutor
 
 class MyApp(Node, ):
     def __init__(self):
@@ -152,7 +153,9 @@ def main(args=None):
     rclpy.init(args=args)
     node = MyApp()
 
-    rclpy.spin(node)
+    executor = MultiThreadedExecutor(num_threads=2) # Gives 2 threads to ROS for handling callbacks (needed for start_async)
+    executor.add_node(node)
+    executor.spin()
 
     node.destroy_node()
     rclpy.shutdown()
