@@ -48,7 +48,7 @@ class Go2RobotInterface:
         ).value  # By default no filter
         self.robot_fq = self.node.declare_parameter(
             "robot_fq",
-            500.0,
+            1000.0,
             ParameterDescriptor(description="Frequency at which the robot state messages are published"),
         ).value  # 500Hz for the Go2
 
