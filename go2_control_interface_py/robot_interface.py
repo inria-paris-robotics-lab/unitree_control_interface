@@ -176,7 +176,7 @@ class Go2RobotInterface:
         _, q_start, _, _ = self.last_state_tqva
 
         t_start = self.node.get_clock().now()
-        while rclpy.ok():
+        while rclpy.ok() and self.is_safe:
             t = self.node.get_clock().now()
             ratio = (t - t_start).nanoseconds / (duration * 1e9)
             ratio = min(ratio, 1)
