@@ -1,13 +1,11 @@
-import rclpy
 from rclpy.node import Node
-from rclpy.duration import Duration
 from rcl_interfaces.msg import ParameterDescriptor
+from enum import Enum, auto
 
 from typing import List, Callable
 from unitree_hg.msg import LowCmd, LowState
 from std_msgs.msg import Bool
 from unitree_sdk2py.utils.crc import CRC
-import threading
 
 
 class Go2RobotInterface:
@@ -22,12 +20,15 @@ class Go2RobotInterface:
     )
     # fmt: on
 
+    # State callback variable
+    user_cb = None
+    start_routine = None
+
     N_DOF = 27
 
     def __init__(self, node: Node, *, joints_filter_fq_default=-1.0):
         self.is_ready = False
         self.is_safe = False
-        self._unlock = False
 
         self.node = node
 
@@ -66,15 +67,13 @@ class Go2RobotInterface:
             node.get_logger().info("Go2RobotInterface: Joint filtering disabled.")
 
         self.crc = CRC()
-        self.user_cb = None
-        # TODO: Add a callback to joint_states and verify that robots is within safety bounds
+        self.start_routine = GoToStartRoutine(self)
 
     def register_callback(self, callback: Callable[[float, List[float], List[float], List[float]], None]):
         self.user_cb = callback
 
     def start_async(self, q_start: List[float], *, goto_config: Bool = True):
-        thread = threading.Thread(target=self._start_routine, args=(q_start, goto_config), daemon=True)
-        thread.start()
+        self.start_routine.start(q_start, goto_config=goto_config)
 
     def unlock(self):
         """
@@ -82,49 +81,33 @@ class Go2RobotInterface:
         The robot will stay (in position control) at the start configuration, until this `unlock` method is called.
         Consequently, the `is_ready` flag will be set ot True only after this method is called (or if `goto_config` is set to False)
         """
-        if not self._unlock:
-            self.node.get_logger().info("Go2RobotInterface: Unlocking robot.")
-        self._unlock = True
-
-    def _start_routine(self, q_start: List[float], goto_config=True):
-        # Arm watchdog
-        arm_watchdog_msg = Bool()
-        arm_watchdog_msg.data = True
-        self._watchdog_publisher.publish(arm_watchdog_msg)
-
-        self.node.get_logger().info("Go2RobotInterface: Waiting for watchdog to be armed...")
-        while not self.is_safe and rclpy.ok():
-            self.node.get_clock().sleep_for(Duration(seconds=0.1))
-
-        if goto_config:
-            self.node.get_logger().info("Go2RobotInterface: Going to start configuration...")
-            success = self._go_to_configuration__(q_start, 5.0)
-            if success:
-                self.node.get_logger().info("Go2RobotInterface: Start configuration reached.")
-            else:
-                self.node.get_logger().error("Go2RobotInterface: Start configuration not reached.")
-            self.is_ready = success
-        else:
-            self.node.get_logger().info("Go2RobotInterface: Skipping start configuration, set command to zero")
-            zeros = [0.0] * self.N_DOF
-            self._send_command(zeros, zeros, zeros, zeros, zeros, 0.0)
-            self.is_ready = True
+        assert self.is_ready, "Go2RobotInterface: Robot not ready, unable to unlock joint yet."
+        self.start_routine.stop()
+        self.node.get_logger().info("Go2RobotInterface: Unlocking robot.")
 
     def send_command(self, q: List[float], v: List[float], tau: List[float], kp: List[float], kd: List[float]):
         assert self.is_ready, (
             "Go2RobotInterface not start-ed, call start_async(q_start) first and wait for Go2RobotInterface.is_ready flag to be True"
         )
-        assert self.is_safe, "Soft e-stop sent by watchdog, ignoring command"
         self._send_command(q, v, tau, kp, kd)
 
     def _send_command(
-        self, q: List[float], v: List[float], tau: List[float], kp: List[float], kd: List[float], scaling: Bool = True
+        self,
+        q: List[float],
+        v: List[float],
+        tau: List[float],
+        kp: List[float],
+        kd: List[float],
+        *,
+        scaling: Bool = True,
+        skip_safety: Bool = False,
     ):
         assert len(q) == self.N_DOF, "Wrong configuration size"
         assert len(v) == self.N_DOF, "Wrong configuration size"
         assert len(tau) == self.N_DOF, "Wrong configuration size"
         assert len(kp) == self.N_DOF, "Wrong configuration size"
         assert len(kd) == self.N_DOF, "Wrong configuration size"
+        assert skip_safety or self.is_safe, "Soft e-stop sent by watchdog, ignoring command"
 
         msg = LowCmd()
 
@@ -150,10 +133,13 @@ class Go2RobotInterface:
 
     def __state_cb(self, msg: LowState):
         t = self.node.get_clock().now().nanoseconds / 1.0e9
+
+        # Convert data from unitree order to pinocchio order
         q_urdf = [msg.motor_state[i_unitree].q for i_unitree in self.__urdf_to_unitree_index]
         v_urdf = [msg.motor_state[i_unitree].dq for i_unitree in self.__urdf_to_unitree_index]
         # a_urdf = [msg.motor_state[i].ddq for i in self.__urdf_to_unitree_index] # Not populated by unitree
 
+        # Filter velocity and acceleration is needed
         last_tqva = self.last_state_tqva
         if last_tqva is None or self.filter_fq <= 0.0:
             # No filtering to do on first point
@@ -176,50 +162,111 @@ class Go2RobotInterface:
 
             self.last_state_tqva = t, q_filter, v_filter, a_filter
 
+        # State machine
+        self.start_routine.update(t, q_urdf)
+        if self.start_routine.is_ready():
+            self.is_ready = True
+
+        # Call user callback
         if self.user_cb is not None:
             self.user_cb(*self.last_state_tqva)
 
-    def _go_to_configuration__(self, q: List[float], duration: float):
-        # Wait for first configuration (a.k.a robot state) to be received
-        for i in range(5):
-            if self.last_state_tqva is not None:
-                break
-            self.node.get_clock().sleep_for(Duration(seconds=0.5))
-        else:
-            assert False, "Robot state not received in time for initialization of interface."
-
-        # Start and goal configurations
-        q_goal = q
-        _, q_start, _, _ = self.last_state_tqva
-
-        # Motor commands
-        q_des = [0.0] * self.N_DOF
-        v_des = [0.0] * self.N_DOF
-        a_des = [0.0] * self.N_DOF
-        kp = [50.0] * self.N_DOF
-        kd = [1.0] * self.N_DOF
-
-        # Main loop
-        clock = self.node.get_clock()
-        t_start = clock.now()
-        rate = self.node.create_rate(self.robot_fq)
-        while rclpy.ok() and self.is_safe:
-            t = clock.now()
-            ratio = (t - t_start).nanoseconds / (duration * 1e9)
-            ratio = min(ratio, 1.0)
-
-            # Interpolate solution
-            for i in range(self.N_DOF):
-                q_des[i] = q_start[i] + (q_goal[i] - q_start[i]) * ratio
-
-            self._send_command(q_des, v_des, a_des, kp, kd)
-
-            # Unlock the robot if goal configuration is reached and user gave signal
-            if ratio >= 1.0 and self._unlock:
-                return True
-            rate.sleep()
-
-        return False
-
     def __safety_cb(self, msg):
         self.is_safe = msg.data
+
+
+class GoToStartRoutine:
+    class State(Enum):
+        IDLE = auto()
+        ARM_WATCHDOG = auto()
+        WAIT_WATCHDOG = auto()
+        INTERPOLATING = auto()
+        HOLD = auto()
+
+    def __init__(self, robot_interface):
+        self.robot = robot_interface
+
+        # Initialize state machine
+        self.state = GoToStartRoutine.State.IDLE
+        self.t_start = None
+        self.q_start = None
+        self.q_goal = None
+
+        # Buffers for commands
+        self.q_cmd = [0.0] * self.robot.N_DOF
+        self.v_cmd = [0.0] * self.robot.N_DOF
+        self.a_cmd = [0.0] * self.robot.N_DOF
+        self.kp = [50.0] * self.robot.N_DOF
+        self.kd = [1.0] * self.robot.N_DOF
+
+    def start(self, q_goal: list[float], *, duration: float = 5.0, goto_config=True):
+        # Set goal related values
+        self.q_goal = q_goal
+        self.duration = duration
+        self.goto_config = goto_config
+
+        # Arm watchdog
+        msg = Bool()
+        msg.data = True
+        self.robot._watchdog_publisher.publish(msg)
+        self.state = GoToStartRoutine.State.WAIT_WATCHDOG
+
+        # Now wait for update to be called
+        self.robot.node.get_logger().info("Go2RobotInterface: Waiting for first state msg...")
+
+    def update(self, t_now: float, q_now: list[float]):
+        """Called from inside __state_cb : progresses the routine."""
+
+        match self.state:
+            case GoToStartRoutine.State.IDLE:
+                pass
+
+            case GoToStartRoutine.State.WAIT_WATCHDOG:
+                # Waiting for watchdog to be armed
+                if not self.robot.is_safe:
+                    self.robot.node.get_logger().info(
+                        "Go2RobotInterface: Waiting for watchdog to be armed...", once=True
+                    )
+                    return
+
+                # Watchdog armed
+                self.robot.node.get_logger().info("Go2RobotInterface: Watchdog to be armed !", once=True)
+                if self.goto_config:
+                    self.t_start = t_now
+                    self.q_start = q_now[:]
+                    self.state = GoToStartRoutine.State.INTERPOLATING
+                else:
+                    # Skip config – just send zeros once
+                    self.q_cmd = [0.0] * self.robot.N_DOF
+                    self.state = GoToStartRoutine.State.HOLD
+                    self.robot.node.get_logger().info("Go2RobotInterface: Skipped start configuration, finished setup.")
+
+            case GoToStartRoutine.State.INTERPOLATING:
+                self.robot.node.get_logger().info("Go2RobotInterface: Going to start configuration.", once=True)
+                ratio = (t_now - self.t_start) / self.duration
+                ratio = min(ratio, 1.0)
+
+                # Linear interpolation of joint positions
+                for i in range(self.robot.N_DOF):
+                    self.q_cmd[i] = self.q_start[i] + (self.q_goal[i] - self.q_start[i]) * ratio
+
+                if ratio >= 1.0:
+                    # Interpolation done, hold the last value until release
+                    self.robot.node.get_logger().info("Go2RobotInterface: Start configuration reached.", once=True)
+                    self.state = GoToStartRoutine.State.HOLD
+
+            case GoToStartRoutine.State.HOLD:
+                self.robot.node.get_logger().info(
+                    "Go2RobotInterface: Holding current command until unlocking.", once=True
+                )
+
+        # Send command to robot when necessary
+        if self.state == GoToStartRoutine.State.INTERPOLATING or self.state == GoToStartRoutine.State.HOLD:
+            self.robot._send_command(self.q_cmd, self.v_cmd, self.a_cmd, self.kp, self.kd)
+
+    def is_ready(self) -> bool:
+        return self.state == GoToStartRoutine.State.HOLD
+
+    def stop(self):
+        """Disable the routine by setting it to idle mode"""
+        self.state = GoToStartRoutine.State.IDLE

@@ -3,7 +3,6 @@ from rclpy.node import Node
 from go2_control_interface_py.robot_interface import Go2RobotInterface
 from go2_description.loader import loadG1
 from std_msgs.msg import Empty
-from rclpy.executors import MultiThreadedExecutor
 import pinocchio as pin
 import numpy as np
 from simple_mpc import (
@@ -121,9 +120,7 @@ def main(args=None):
     rclpy.init(args=args)
     node = MyApp()
 
-    executor = MultiThreadedExecutor(num_threads=2)
-    executor.add_node(node)
-    executor.spin()
+    rclpy.spin(node)
 
     node.destroy_node()
     rclpy.shutdown()
