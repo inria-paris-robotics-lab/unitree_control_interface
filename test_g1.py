@@ -42,12 +42,12 @@ class MyApp(
         self.data_handler = RobotDataHandler(self.model_handler)
 
         kino_ID_settings = KinodynamicsIDSettings()
-        kino_ID_settings.kp_base = 30.0
-        kino_ID_settings.kp_posture = 100.0
+        kino_ID_settings.kp_base = 150.0
+        kino_ID_settings.kp_posture = 125.0
         kino_ID_settings.kp_contact = 10.0
         kino_ID_settings.w_base = 100.0
         kino_ID_settings.w_posture = 100.0  # 1.0
-        kino_ID_settings.w_contact_force = 0.001
+        kino_ID_settings.w_contact_force = 0
         kino_ID_settings.w_contact_motion = 1.0
 
         self.kino_ID = KinodynamicsID(self.model_handler, 1.0 / 500.0, kino_ID_settings)
@@ -57,8 +57,8 @@ class MyApp(
 
         self.kp = ([150.0, 150.0, 50.0, 50.0] + [50.0] * 2) * 2 + [50.0] + ([50.0, 50.0, 50.0, 50.0] + [50.0] * 3) * 2
         self.kd = ([2.0, 2.0, 1.0, 1.0] + [1.0] * 2) * 2 + [1.0] + ([1.0, 1.0, 1.0, 1.0] + [1.0] * 3) * 2
-        self.kp = [kp / 10.0 for kp in self.kp]
-        self.kd = [kd / 10.0 for kd in self.kd]
+        # self.kp = [kp / 10.0 for kp in self.kp]
+        # self.kd = [kd / 10.0 for kd in self.kd]
 
         # The robot will move by itself to the q_start configuration and wait for you first command
         self.robot_if.start_async(self.model_handler.getReferenceState()[7 : self.nq])
@@ -101,16 +101,19 @@ class MyApp(
         # self.viz.display(np.array([0,0,0, 0,0,0,1] + q))
 
         # Sending commands
-        q_des = self.model_handler.getReferenceState()[7 : self.nq]
-        v_des = [0.0] * (self.nv - 6)
-
         base_pose, base_vel = self._compute_base_pose_vel(q, dq)
+        q_meas = np.concatenate((base_pose, np.array(q)))
+        v_meas = np.concatenate((base_vel, np.array(dq)))
 
-        tau_cmd = self.kino_ID.solve(
-            t, np.concatenate((base_pose, np.array(q))), np.concatenate((base_vel, np.array(dq)))
-        )
-        if self.robot_if.is_ready:
-            self.robot_if.send_command(q_des, v_des, tau_cmd, self.kp, self.kd)
+        tau_cmd = self.kino_ID.solve(t, q_meas, v_meas)
+
+        dt = 0.001
+        a_next = self.kino_ID.getAccelerations()
+        v_next = v_meas + a_next * dt
+        q_next = pin.integrate(self.pin_robot_wrapper.model, q_meas, dt * (v_next + v_meas) / 2.0)
+
+        if self.robot_if.can_be_controlled():
+            self.robot_if.send_command(q_next[7:], v_next[6:], tau_cmd, self.kp, self.kd)
 
     def __unlock_cb(self, msg):
         self.robot_if.unlock()

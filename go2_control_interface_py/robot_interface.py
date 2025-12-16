@@ -27,8 +27,8 @@ class Go2RobotInterface:
     N_DOF = 27
 
     def __init__(self, node: Node, *, joints_filter_fq_default=-1.0):
-        self.is_ready = False
-        self.is_safe = False
+        self._is_ready = False
+        self._is_safe = False
 
         self.node = node
 
@@ -75,19 +75,26 @@ class Go2RobotInterface:
     def start_async(self, q_start: List[float], *, goto_config: Bool = True):
         self.start_routine.start(q_start, goto_config=goto_config)
 
+    def can_be_unlocked(self):
+        return self.start_routine.is_waiting_completion()
+
+    def can_be_controlled(self):
+        return self._is_ready
+
     def unlock(self):
         """
         Unlock the robot after `start_async` is called with `goto_config` set to True.
         The robot will stay (in position control) at the start configuration, until this `unlock` method is called.
-        Consequently, the `is_ready` flag will be set ot True only after this method is called (or if `goto_config` is set to False)
+        Consequently, the `can_be_controlled()` flag will be set ot True only after this method is called (even if `goto_config` is set to False)
         """
-        assert self.is_ready, "Go2RobotInterface: Robot not ready, unable to unlock joint yet."
+        assert self.can_be_unlocked(), "Go2RobotInterface: Robot not ready, unable to unlock joint yet."
         self.start_routine.stop()
+        self._is_ready = True
         self.node.get_logger().info("Go2RobotInterface: Unlocking robot.")
 
     def send_command(self, q: List[float], v: List[float], tau: List[float], kp: List[float], kd: List[float]):
-        assert self.is_ready, (
-            "Go2RobotInterface not start-ed, call start_async(q_start) first and wait for Go2RobotInterface.is_ready flag to be True"
+        assert self.can_be_controlled(), (
+            "Go2RobotInterface not start-ed, call start_async(q_start) first and wait for Go2RobotInterface.can_be_controlled() to return True"
         )
         self._send_command(q, v, tau, kp, kd)
 
@@ -107,7 +114,7 @@ class Go2RobotInterface:
         assert len(tau) == self.N_DOF, "Wrong configuration size"
         assert len(kp) == self.N_DOF, "Wrong configuration size"
         assert len(kd) == self.N_DOF, "Wrong configuration size"
-        assert skip_safety or self.is_safe, "Soft e-stop sent by watchdog, ignoring command"
+        assert skip_safety or self._is_safe, "Soft e-stop sent by watchdog, ignoring command"
 
         msg = LowCmd()
 
@@ -164,15 +171,13 @@ class Go2RobotInterface:
 
         # State machine
         self.start_routine.update(t, q_urdf)
-        if self.start_routine.is_ready():
-            self.is_ready = True
 
         # Call user callback
         if self.user_cb is not None:
             self.user_cb(*self.last_state_tqva)
 
     def __safety_cb(self, msg):
-        self.is_safe = msg.data
+        self._is_safe = msg.data
 
 
 class GoToStartRoutine:
@@ -223,7 +228,7 @@ class GoToStartRoutine:
 
             case GoToStartRoutine.State.WAIT_WATCHDOG:
                 # Waiting for watchdog to be armed
-                if not self.robot.is_safe:
+                if not self.robot._is_safe:
                     self.robot.node.get_logger().info(
                         "Go2RobotInterface: Waiting for watchdog to be armed...", once=True
                     )
@@ -264,7 +269,7 @@ class GoToStartRoutine:
         if self.state == GoToStartRoutine.State.INTERPOLATING or self.state == GoToStartRoutine.State.HOLD:
             self.robot._send_command(self.q_cmd, self.v_cmd, self.a_cmd, self.kp, self.kd)
 
-    def is_ready(self) -> bool:
+    def is_waiting_completion(self) -> bool:
         return self.state == GoToStartRoutine.State.HOLD
 
     def stop(self):
