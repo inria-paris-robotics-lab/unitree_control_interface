@@ -38,9 +38,11 @@ class Go2RobotInterface:
         self._cmd_publisher = self.node.create_publisher(LowCmd, "lowcmd", 10)
         self._state_subscription = self.node.create_subscription(LowState, "lowstate", self.__state_cb, 10)
 
-        self.scaling_glob = self.node.declare_parameter("scaling_glob", 1.0).value
         self.scaling_gain = self.node.declare_parameter("scaling_gain", 1.0).value
         self.scaling_ff = self.node.declare_parameter("scaling_ff", 1.0).value
+
+        self.transition_start_t = 0.0
+        self.transition_duration = 0.0
 
         self.last_state_tqva = None
         self.filter_fq = self.node.declare_parameter(
@@ -81,7 +83,7 @@ class Go2RobotInterface:
     def can_be_controlled(self):
         return self._is_ready
 
-    def unlock(self):
+    def unlock(self, *, transition_duration=0.0):
         """
         Unlock the robot after `start_async` is called with `goto_config` set to True.
         The robot will stay (in position control) at the start configuration, until this `unlock` method is called.
@@ -89,6 +91,10 @@ class Go2RobotInterface:
         """
         assert self.can_be_unlocked(), "Go2RobotInterface: Robot not ready, unable to unlock joint yet."
         self.start_routine.stop()
+
+        self.transition_duration = transition_duration
+        self.transition_start_t = self.node.get_clock().now().nanoseconds / 1.0e9
+
         self._is_ready = True
         self.node.get_logger().info("Go2RobotInterface: Unlocking robot.")
 
@@ -96,7 +102,31 @@ class Go2RobotInterface:
         assert self.can_be_controlled(), (
             "Go2RobotInterface not start-ed, call start_async(q_start) first and wait for Go2RobotInterface.can_be_controlled() to return True"
         )
-        self._send_command(q, v, tau, kp, kd)
+        if self.transition_start_t is not None:
+            t = self.node.get_clock().now().nanoseconds / 1.0e9
+            ratio = (t - self.transition_start_t) / self.transition_duration
+            self.node.get_logger().warn(f"{ratio=}")
+            if ratio > 1.0:
+                ratio = 1.0
+                # Transition over disable it
+                self.transition_start_t = None
+
+            q_cmd = [0.0] * self.N_DOF
+            v_cmd = [0.0] * self.N_DOF
+            tau_cmd = [0.0] * self.N_DOF
+            kp_cmd = [0.0] * self.N_DOF
+            kd_cmd = [0.0] * self.N_DOF
+
+            for i in range(self.N_DOF):
+                q_cmd[i] = q[i] * ratio + self.start_routine.q_cmd[i] * (1.0 - ratio)
+                v_cmd[i] = v[i] * ratio + self.start_routine.v_cmd[i] * (1.0 - ratio)
+                tau_cmd[i] = tau[i] * ratio + self.start_routine.tau_cmd[i] * (1.0 - ratio)
+                kp_cmd[i] = kp[i] * ratio + self.start_routine.kp[i] * (1.0 - ratio)
+                kd_cmd[i] = kd[i] * ratio + self.start_routine.kd[i] * (1.0 - ratio)
+
+            self._send_command(q_cmd, v_cmd, tau_cmd, kp_cmd, kd_cmd)
+        else:
+            self._send_command(q, v, tau, kp, kd)
 
     def _send_command(
         self,
@@ -123,8 +153,8 @@ class Go2RobotInterface:
         msg.mode_machine = 6  # G1 Type：4：23-Dof;5:29-Dof;6:27-Dof(29Dof Fitted at the waist)
 
         # Scaling
-        k_ratio = self.scaling_gain * self.scaling_glob if scaling else 1.0
-        ff_ratio = self.scaling_ff * self.scaling_glob if scaling else 1.0
+        k_ratio = self.scaling_gain if scaling else 1.0
+        ff_ratio = self.scaling_ff if scaling else 1.0
         for i_urdf, i_unitree in enumerate(self.__urdf_to_unitree_index):
             msg.motor_cmd[i_unitree].mode = 0x01  # Set toque mode
             msg.motor_cmd[i_unitree].q = q[i_urdf]
@@ -200,7 +230,7 @@ class GoToStartRoutine:
         # Buffers for commands
         self.q_cmd = [0.0] * self.robot.N_DOF
         self.v_cmd = [0.0] * self.robot.N_DOF
-        self.a_cmd = [0.0] * self.robot.N_DOF
+        self.tau_cmd = [0.0] * self.robot.N_DOF
         self.kp = [50.0] * self.robot.N_DOF
         self.kd = [1.0] * self.robot.N_DOF
 
@@ -267,7 +297,7 @@ class GoToStartRoutine:
 
         # Send command to robot when necessary
         if self.state == GoToStartRoutine.State.INTERPOLATING or self.state == GoToStartRoutine.State.HOLD:
-            self.robot._send_command(self.q_cmd, self.v_cmd, self.a_cmd, self.kp, self.kd)
+            self.robot._send_command(self.q_cmd, self.v_cmd, self.tau_cmd, self.kp, self.kd)
 
     def is_waiting_completion(self) -> bool:
         return self.state == GoToStartRoutine.State.HOLD

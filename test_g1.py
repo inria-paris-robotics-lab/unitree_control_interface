@@ -4,6 +4,8 @@ from go2_control_interface_py.robot_interface import Go2RobotInterface
 from go2_description.loader import loadG1
 from std_msgs.msg import Empty
 import pinocchio as pin
+
+# from pinocchio.visualize import MeshcatVisualizer
 import numpy as np
 from simple_mpc import (
     RobotModelHandler,
@@ -24,10 +26,10 @@ class MyApp(
         self.robot_if = Go2RobotInterface(self)
         self.robot_if.register_callback(self._sensor_reading_callback)
 
-        self._state_subscription = self.create_subscription(Empty, "unlock_base", self.__unlock_cb, 1)
+        self._state_subscription = self.create_subscription(Empty, "unlock_ctrl", self.__unlock_cb, 1)
 
         # self.viz = MeshcatVisualizer(self.pin_robot_wrapper.model, self.pin_robot_wrapper.collision_model, self.pin_robot_wrapper.visual_model)
-        # self.viz.initViewer(open=True)
+        # self.viz.initViewer(open=False, zmq_url="tcp://127.0.0.1:6000")
         # self.viz.loadViewerModel()
         # self.viz.display(np.array([0,0,0, 0,0,0,1] + [0.] * 27))
 
@@ -116,7 +118,7 @@ class MyApp(
             self.robot_if.send_command(q_next[7:], v_next[6:], tau_cmd, self.kp, self.kd)
 
     def __unlock_cb(self, msg):
-        self.robot_if.unlock()
+        self.robot_if.unlock(transition_duration=10.0)
 
 
 def main(args=None):
