@@ -121,8 +121,8 @@ class Go2RobotInterface:
                 q_cmd[i] = q[i] * ratio + self.start_routine.q_cmd[i] * (1.0 - ratio)
                 v_cmd[i] = v[i] * ratio + self.start_routine.v_cmd[i] * (1.0 - ratio)
                 tau_cmd[i] = tau[i] * ratio + self.start_routine.tau_cmd[i] * (1.0 - ratio)
-                kp_cmd[i] = kp[i] * ratio + self.start_routine.kp[i] * (1.0 - ratio)
-                kd_cmd[i] = kd[i] * ratio + self.start_routine.kd[i] * (1.0 - ratio)
+                kp_cmd[i] = kp[i] * ratio + self.start_routine.kp_cmd[i] * (1.0 - ratio)
+                kd_cmd[i] = kd[i] * ratio + self.start_routine.kd_cmd[i] * (1.0 - ratio)
 
             self._send_command(q_cmd, v_cmd, tau_cmd, kp_cmd, kd_cmd)
         else:
@@ -231,6 +231,10 @@ class GoToStartRoutine:
         self.q_cmd = [0.0] * self.robot.N_DOF
         self.v_cmd = [0.0] * self.robot.N_DOF
         self.tau_cmd = [0.0] * self.robot.N_DOF
+        self.kp_cmd = [0.0] * self.robot.N_DOF
+        self.kd_cmd = [0.0] * self.robot.N_DOF
+
+        # Gains for position control
         self.kp = [50.0] * self.robot.N_DOF
         self.kd = [1.0] * self.robot.N_DOF
 
@@ -278,14 +282,24 @@ class GoToStartRoutine:
 
             case GoToStartRoutine.State.INTERPOLATING:
                 self.robot.node.get_logger().info("Go2RobotInterface: Going to start configuration.", once=True)
-                ratio = (t_now - self.t_start) / self.duration
-                ratio = min(ratio, 1.0)
+
+                # First increase the gain progressively (to prevent any harsh discontinuity in the motor)
+                duration_k = 0.1 * self.duration
+                ratio_k = (t_now - self.t_start) / duration_k
+                ratio_k = min(ratio_k, 1.0)
+
+                # Then interpolate the configuration
+                duration_q = self.duration - duration_k
+                ratio_q = (t_now - self.t_start - duration_k) / duration_q
+                ratio_q = min(max(ratio_q, 0.0), 1.0)  # clamp between 0. and 1.
 
                 # Linear interpolation of joint positions
                 for i in range(self.robot.N_DOF):
-                    self.q_cmd[i] = self.q_start[i] + (self.q_goal[i] - self.q_start[i]) * ratio
+                    self.q_cmd[i] = self.q_start[i] + (self.q_goal[i] - self.q_start[i]) * ratio_q
+                    self.kp_cmd[i] = self.kp[i] * ratio_k
+                    self.kd_cmd[i] = self.kd[i] * ratio_k
 
-                if ratio >= 1.0:
+                if ratio_q >= 1.0:
                     # Interpolation done, hold the last value until release
                     self.robot.node.get_logger().info("Go2RobotInterface: Start configuration reached.", once=True)
                     self.state = GoToStartRoutine.State.HOLD
@@ -297,7 +311,7 @@ class GoToStartRoutine:
 
         # Send command to robot when necessary
         if self.state == GoToStartRoutine.State.INTERPOLATING or self.state == GoToStartRoutine.State.HOLD:
-            self.robot._send_command(self.q_cmd, self.v_cmd, self.tau_cmd, self.kp, self.kd)
+            self.robot._send_command(self.q_cmd, self.v_cmd, self.tau_cmd, self.kp_cmd, self.kd_cmd)
 
     def is_waiting_completion(self) -> bool:
         return self.state == GoToStartRoutine.State.HOLD
