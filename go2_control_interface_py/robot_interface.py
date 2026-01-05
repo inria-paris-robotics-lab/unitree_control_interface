@@ -235,7 +235,7 @@ class GoToStartRoutine:
         self.kd_cmd = [0.0] * self.robot.N_DOF
 
         # Gains for position control
-        self.kp = [50.0] * self.robot.N_DOF
+        self.kp = [75.0] * self.robot.N_DOF
         self.kd = [1.0] * self.robot.N_DOF
 
     def start(self, q_goal: list[float], *, duration: float = 5.0, goto_config=True):

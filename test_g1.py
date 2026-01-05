@@ -23,7 +23,7 @@ class MyApp(
 
         self.pin_robot_wrapper = loadG1()
 
-        self.robot_if = Go2RobotInterface(self)
+        self.robot_if = Go2RobotInterface(self, joints_filter_fq_default=150.0)
         self.robot_if.register_callback(self._sensor_reading_callback)
 
         self._state_subscription = self.create_subscription(Empty, "unlock_ctrl", self.__unlock_cb, 1)
