@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from go2_control_interface_py.robot_interface import Go2RobotInterface
-from go2_description.loader import loadG1
+from go2_description.loader import loadGo2
 from std_msgs.msg import Empty
 import pinocchio as pin
 
@@ -21,7 +21,7 @@ class MyApp(
     def __init__(self):
         Node.__init__(self, "my_app2")
 
-        self.pin_robot_wrapper = loadG1()
+        self.pin_robot_wrapper = loadGo2()
 
         self.robot_if = Go2RobotInterface(self, joints_filter_fq_default=150.0)
         self.robot_if.register_callback(self._sensor_reading_callback)
@@ -34,22 +34,22 @@ class MyApp(
         # self.viz.display(np.array([0,0,0, 0,0,0,1] + [0.] * 27))
 
         # Create inverse dynamic
-        base_frame_name = "torso_link"
-        foot_points = np.array(
-            [[0.12, 0.03, -0.035], [-0.06, 0.03, -0.035], [-0.06, -0.03, -0.035], [0.12, -0.03, -0.035]]
-        )
-        self.model_handler = RobotModelHandler(self.pin_robot_wrapper.model, "half_sitting", base_frame_name)
-        self.model_handler.addQuadFoot("left_ankle_roll_link", base_frame_name, foot_points)
-        self.model_handler.addQuadFoot("right_ankle_roll_link", base_frame_name, foot_points)
+        base_frame_name = "root_joint"
+
+        self.model_handler = RobotModelHandler(self.pin_robot_wrapper.model, "standing", base_frame_name)
+        self.model_handler.addPointFoot("FL_foot", base_frame_name)
+        self.model_handler.addPointFoot("FR_foot", base_frame_name)
+        self.model_handler.addPointFoot("RL_foot", base_frame_name)
+        self.model_handler.addPointFoot("RR_foot", base_frame_name)
         self.data_handler = RobotDataHandler(self.model_handler)
 
         kino_ID_settings = KinodynamicsIDSettings()
-        kino_ID_settings.kp_base = 150.0
-        kino_ID_settings.kp_posture = 125.0
+        kino_ID_settings.kp_base = 7.0
+        kino_ID_settings.kp_posture = 10.0
         kino_ID_settings.kp_contact = 10.0
         kino_ID_settings.w_base = 100.0
-        kino_ID_settings.w_posture = 100.0  # 1.0
-        kino_ID_settings.w_contact_force = 0
+        kino_ID_settings.w_posture = 1.0
+        kino_ID_settings.w_contact_force = 1.0
         kino_ID_settings.w_contact_motion = 1.0
 
         self.kino_ID = KinodynamicsID(self.model_handler, 1.0 / 500.0, kino_ID_settings)
@@ -57,8 +57,8 @@ class MyApp(
         self.nq = self.model_handler.getModel().nq
         self.nv = self.model_handler.getModel().nv
 
-        self.kp = ([150.0, 150.0, 50.0, 50.0] + [50.0] * 2) * 2 + [50.0] + ([50.0, 50.0, 50.0, 50.0] + [50.0] * 3) * 2
-        self.kd = ([2.0, 2.0, 1.0, 1.0] + [1.0] * 2) * 2 + [1.0] + ([1.0, 1.0, 1.0, 1.0] + [1.0] * 3) * 2
+        self.kp = [150.0] * 12
+        self.kd = [1.0] * 12
         # self.kp = [kp / 10.0 for kp in self.kp]
         # self.kd = [kd / 10.0 for kd in self.kd]
 
@@ -68,9 +68,8 @@ class MyApp(
     def _compute_base_pose_vel(self, q, dq):
         model = self.model_handler.getModel()
         data = self.data_handler.getData()
-        base_frame_id = model.getFrameId("torso_link")
-        left_foot_frame_id = model.getFrameId("left_ankle_roll_link")
-        right_foot_frame_id = model.getFrameId("right_ankle_roll_link")
+        base_frame_id = self.model_handler.getBaseFrameId()
+        feet_frame_ids = self.model_handler.getFeetFrameIds()
 
         q_full = pin.neutral(model)
         q_full[7:] = q
@@ -80,22 +79,24 @@ class MyApp(
         pin.forwardKinematics(model, data, q_full, dq_full)
         pin.updateFramePlacements(model, data)
 
-        oMleftfoot = data.oMf[left_foot_frame_id]
-        oMrightfoot = data.oMf[right_foot_frame_id]
+        oMfeet = [data.oMf[foot_frame_id] for foot_frame_id in feet_frame_ids]
         oMbase = data.oMf[base_frame_id]
 
-        leftfootMbase = oMleftfoot.actInv(oMbase)
-        rightfootMbase = oMrightfoot.actInv(oMbase)
+        feetMbase = [oMfoot.actInv(oMbase) for oMfoot in oMfeet]
 
-        feetMbase = pin.exp((pin.log(leftfootMbase) + pin.log(rightfootMbase)) / 2.0)
+        feetavgMbase = pin.exp(
+            sum([pin.log(footMbase) for footMbase in feetMbase], start=pin.Motion()) / len(feetMbase)
+        )
 
-        w_v_leftfoot = pin.getFrameVelocity(model, data, left_foot_frame_id, pin.ReferenceFrame.WORLD)
-        w_v_rightfoot = pin.getFrameVelocity(model, data, right_foot_frame_id, pin.ReferenceFrame.WORLD)
+        w_v_feet = [
+            pin.getFrameVelocity(model, data, foot_frame_id, pin.ReferenceFrame.WORLD)
+            for foot_frame_id in feet_frame_ids
+        ]
         w_v_base = pin.getFrameVelocity(model, data, base_frame_id, pin.ReferenceFrame.WORLD)
-        w_v_feet_base = w_v_base - (w_v_leftfoot + w_v_rightfoot) / 2.0
+        w_v_feet_base = w_v_base - sum(w_v_feet, start=pin.Motion()) / len(w_v_feet)
         v_feet_base = oMbase.actInv(w_v_feet_base)
 
-        return pin.SE3ToXYZQUAT(feetMbase), v_feet_base.vector
+        return pin.SE3ToXYZQUAT(feetavgMbase), v_feet_base.vector
 
     def _sensor_reading_callback(self, t, q, dq, ddq):
         # Reading timestamp, positions, velocities, accelerations
@@ -109,7 +110,7 @@ class MyApp(
 
         tau_cmd = self.kino_ID.solve(t, q_meas, v_meas)
 
-        dt = 0.001
+        dt = 0.002
         a_next = self.kino_ID.getAccelerations()
         v_next = v_meas + a_next * dt
         q_next = pin.integrate(self.pin_robot_wrapper.model, q_meas, dt * (v_next + v_meas) / 2.0)

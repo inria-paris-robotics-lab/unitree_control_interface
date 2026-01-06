@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from go2_control_interface_py.robot_interface import Go2RobotInterface
-from unitree_hg.msg import LowCmd
+from unitree_go.msg import LowCmd
 from std_msgs.msg import Bool
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 
@@ -40,9 +40,9 @@ class WatchDogNode(Node, Go2RobotInterface):
         self.q_max = self.declare_parameter("q_max", rclpy.Parameter.Type.DOUBLE_ARRAY).value
         self.q_min = self.declare_parameter("q_min", rclpy.Parameter.Type.DOUBLE_ARRAY).value
         self.margin_duration = self.declare_parameter("margin_duration", rclpy.Parameter.Type.DOUBLE_ARRAY).value
-        assert len(self.q_max) == 27, "Parameter q_max should be length 27"
-        assert len(self.q_min) == 27, "Parameter q_min should be length 27"
-        assert len(self.margin_duration) == 27, "Parameter margin_duration should be length 27"
+        assert len(self.q_max) == 12, "Parameter q_max should be length 12"
+        assert len(self.q_min) == 12, "Parameter q_min should be length 12"
+        assert len(self.margin_duration) == 12, "Parameter margin_duration should be length 12"
         assert all(d >= 0.0 for d in self.margin_duration), "Parameter margin_duration should be non negative"
 
         # Watchdog timer logic
@@ -128,7 +128,7 @@ class WatchDogNode(Node, Go2RobotInterface):
         self.is_waiting = False
 
     def _send_kill_cmd(self):
-        self._send_command([0.0] * 27, [0.0] * 27, [0.0] * 27, [0.0] * 27, [1.0] * 27, scaling=False, skip_safety=True)
+        self._send_command([0.0] * 12, [0.0] * 12, [0.0] * 12, [0.0] * 12, [1.0] * 12, scaling=False, skip_safety=True)
         # Send info to other nodes
         is_safe_msg = Bool()
         is_safe_msg.data = False
