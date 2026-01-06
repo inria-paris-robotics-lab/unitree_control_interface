@@ -134,10 +134,6 @@ class MyApp(Node, ):
         start_q = [0.] *12
         self.robot_if.start_async(start_q)
 
-        # Call this once you app is ready to send command. (In this case can be sent now)
-        # #The robot will stay in position control at q_start config until you call that
-        self.robot_if.unlock()
-
     def _sensor_reading_callback(self, t, q, dq, ddq):
         # Reading timestamp, positions, velocities, accelerations
         # (Should be received at 500Hz approx.)
@@ -148,7 +144,15 @@ class MyApp(Node, ):
         tau_des = [0.] * 12
         kp      = [0.] * 12
         kd      = [0.] * 12
-        if self.robot_if.is_ready: # This flag is True once both the robot reached the start configuration and self.robot_if.unlock() has been called.
+
+        # Call this once you app is ready to send command. (In this case can be sent directly)
+        if self.robot_if.can_be_unlocked():
+            # The robot will stay in position control at q_start config until you call that routine
+            # The 1.0 argument will make the interface transition smoothly from the position control to your commands over a 1.0s duration
+            self.robot_if.unlock(1.0)
+
+        # This flag is True once both the robot reached the start configuration and self.robot_if.unlock() has been called.
+        if self.robot_if.can_be_controlled():
             self.robot_if.send_command(q_des, v_des, tau_des, kp, kd) # Will crash if called when robot is not ready.
 
 
