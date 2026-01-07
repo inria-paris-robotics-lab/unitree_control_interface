@@ -108,14 +108,15 @@ class MyApp(
         q_meas = np.concatenate((base_pose, np.array(q)))
         v_meas = np.concatenate((base_vel, np.array(dq)))
 
-        tau_cmd = self.kino_ID.solve(t, q_meas, v_meas)
-
-        dt = 0.002
-        a_next = self.kino_ID.getAccelerations()
-        v_next = v_meas + a_next * dt
-        q_next = pin.integrate(self.pin_robot_wrapper.model, q_meas, dt * (v_next + v_meas) / 2.0)
-
         if self.robot_if.can_be_controlled():
+            # tau_cmd = [0.0]*12
+            tau_cmd = self.kino_ID.solve(t, q_meas, v_meas)
+
+            dt = 0.002
+            a_next = self.kino_ID.getAccelerations()
+            v_next = v_meas + a_next * dt
+            q_next = pin.integrate(self.pin_robot_wrapper.model, q_meas, dt * (v_next + v_meas) / 2.0)
+
             self.robot_if.send_command(q_next[7:], v_next[6:], tau_cmd, self.kp, self.kd)
 
     def __unlock_cb(self, msg):
