@@ -104,7 +104,6 @@ class Go2RobotInterface:
         if self.transition_start_t is not None:
             t = self.node.get_clock().now().nanoseconds / 1.0e9
             ratio = (t - self.transition_start_t) / self.transition_duration
-            self.node.get_logger().warn(f"{ratio=}")
             if ratio > 1.0:
                 ratio = 1.0
                 # Transition over disable it
