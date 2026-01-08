@@ -4,9 +4,9 @@ import struct
 import subprocess
 
 
-class Go2NetworkInfo:
+class UnitreeNetworkInfo:
     ROBOT_SUBNET = "192.168.123"
-    GO2_HOST = ".18"
+    ROBOT_HOST = ".18"
     JETSON_HOST = ".161"
 
     def getIPInfo(self, ifname):
@@ -21,7 +21,7 @@ class Go2NetworkInfo:
         except IOError:
             return None
 
-    def getGo2InterfaceNameIp(self):
+    def getRobotInterfaceNameIp(self):
         # Return a list of network interface information
         nameindex_array = socket.if_nameindex()
 
@@ -46,16 +46,16 @@ class Go2NetworkInfo:
 
 
 def main(args=None):
-    go2_net = Go2NetworkInfo()
-    ifname, ifip = go2_net.getGo2InterfaceNameIp()
+    robot_net = UnitreeNetworkInfo()
+    ifname, ifip = robot_net.getRobotInterfaceNameIp()
     print(f"DDS Interface name: {ifname}")
     print(f"IP address:         {ifip}")
 
     print("\nPinging devices:")
-    robot_up = go2_net.ping(go2_net.GO2_HOST)
-    jetson_up = go2_net.ping(go2_net.JETSON_HOST)
-    print(f"Robot  is {'  ' if robot_up else 'NOT'} reachable ({go2_net.ROBOT_SUBNET + go2_net.GO2_HOST})")
-    print(f"Jetson is {'  ' if jetson_up else 'NOT'} reachable ({go2_net.ROBOT_SUBNET + go2_net.GO2_HOST})")
+    robot_up = robot_net.ping(robot_net.ROBOT_HOST)
+    jetson_up = robot_net.ping(robot_net.JETSON_HOST)
+    print(f"Robot  is {'  ' if robot_up else 'NOT'} reachable ({robot_net.ROBOT_SUBNET + robot_net.ROBOT_HOST})")
+    print(f"Jetson is {'  ' if jetson_up else 'NOT'} reachable ({robot_net.ROBOT_SUBNET + robot_net.ROBOT_HOST})")
 
 
 if __name__ == "__main__":

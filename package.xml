@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>go2_control_interface</name>
+  <name>unitree_control_interface</name>
   <version>1.0.0</version>
-  <description>Wrapper for sending joint command to the go2 robot, with safeties and init procedure.</description>
+  <description>Wrapper for sending joint command to the unitree Go2 and G1 robots, with safeties and init procedure.</description>
   <maintainer email="etienne.arlaud@inria.fr">earlaud</maintainer>
   <license>BSD-3-Clause</license>
 

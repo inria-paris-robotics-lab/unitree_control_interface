@@ -1,8 +1,8 @@
-Go2 Control Interface
+Unitree Control Interface
 ===
 
 ## Summary
-Python library to easily send joint command and read joint values to the go2 robot, with safeties and init procedure.
+Python library to easily send joint command and read joint values to the unitree go2 or G1 robots, with safeties and init procedure.
 
 ## Installation
 The following procedure allow for installing all the dependencies.
@@ -15,21 +15,21 @@ cd unitree_ros2/cyclonedds_ws/src
 
 2. Clone this repo
 ```bash
-git clone git@github.com:inria-paris-robotics-lab/go2_control_interface.git --recursive
+git clone git@github.com:inria-paris-robotics-lab/unitree_control_interface.git --recursive
 ```
 
 3. Create conda environment.
 (It is recommended to use `mamba` instead of `conda` for faster/better dependencies solving)
 ```bash
-mamba env create -f go2_control_interface/environment.yaml
-mamba activate go2_control_interface
+mamba env create -f unitree_control_interface/environment.yaml
+mamba activate unitree_control_interface
 ```
 Note: ros2 humble is taken from the conda channel **robostack-staging** (and not robostack-humble), because it is built with boost 1.82 (rather than boost 1.74)...
 
 
 4. Clone some dependencies (Some dependencies are not available on conda, or not with adequate versions) (vcs allow for cloning and managing multiple repo at once)
 ```bash
-vcs import --recursive < go2_control_interface/git-deps.yaml
+vcs import --recursive < unitree_control_interface/git-deps.yaml
 ```
 
 5. Build all CMake packages
@@ -53,7 +53,7 @@ colcon build --packages-skip unitree_sdk2py
 
 6. Source the environment
 ```bash
-mamba activate go2_control_interface # If not already done
+mamba activate unitree_control_interface # If not already done
 source install/setup.bash
 ```
 
@@ -70,28 +70,28 @@ pip install -e .
 ##### On the real robot
 Your network interface where the robot is plugged need to be set in "manual IPV4" (e.g. hve a static ip address) with `192.168.123.222` / `255.255.255.0` address/netmask
 ```bash
-mamba activate go2_control_interface
+mamba activate unitree_control_interface
 source install/setup.bash
-source <(ros2 run go2_control_interface autoset_environment_dds.py REAL)
+source <(ros2 run unitree_control_interface autoset_environment_dds.py REAL)
 ```
 ##### In simulation (using go2_simulation)
 ```bash
-mamba activate go2_control_interface
+mamba activate unitree_control_interface
 source install/setup.bash
-source <(ros2 run go2_control_interface autoset_environment_dds.py SIMULATION)
+source <(ros2 run unitree_control_interface autoset_environment_dds.py SIMULATION)
 ```
 * Replace `---absolute path to cyclonedds workspace---`
 
-##### GO2 topics not appearing on local machine:
-Your firewall might block communication between your machine and the go2 (topics such as `/lowstate`,`/api/...` will not appear), in that case deactivate your firewall with :
+##### GO2/G1 topics not appearing on local machine:
+Your firewall might block communication between your machine and the go2/g1 (topics such as `/lowstate`,`/api/...` will not appear), in that case deactivate your firewall with :
 ```bash
 sudo ufw disable
 ```
 and retry `ros2 topic list`. If they appear now you will need to update permissions in your firewall :
 ```bash
 sudo ufw enable # reactivate the firewall
-sudo ufw allow in proto udp from 192.168.123.222 # allow UDP messages from go2 IP
-sudo ufw allow in proto udp to 192.168.123.222 # allow UDP messages to go2 IP
+sudo ufw allow in proto udp from 192.168.123.222 # allow UDP messages from robot IP
+sudo ufw allow in proto udp to 192.168.123.222 # allow UDP messages to robot IP
 ```
 You can check permissions with `sudo ufw status verbose`. You should have:
 ```bash
@@ -104,17 +104,17 @@ Anywhere                   ALLOW IN    192.168.123.222/udp
 #### 1. Shutdown unitree default control
 When powered on, the go2 have some default unitree controllers running, to make it stand up and walk. It needs to but shutdown as it is constantly spamming the motor with its commands.
 ```bash
-ros2 run go2_control_interface shutdown_sportsmode.py
+ros2 run unitree_control_interface shutdown_sportsmode.py
 ```
 
 #### 2. Launch watchdog
 The watchdog node enforces some safeties on the robot. For instance, if the commands sent are too spaced-out in time or if the joints are out of some certain safety bounds, it kills the robot.
 
-The go2_control_interface won't start if this node is node running.
+The unitree_control_interface won't start if this node is node running.
 
 To launch it:
 ```bash
-ros2 launch go2_control_interface watchdog.launch.py
+ros2 launch unitree_control_interface watchdog.launch.py
 ```
 
 #### 3. Run your app
@@ -122,7 +122,7 @@ Here is the boilerplate/example code to write your app
 ```python
 import rclpy
 from rclpy.node import Node
-from go2_control_interface_py.robot_interface import Go2RobotInterface
+from unitree_control_interface_py import Go2RobotInterface
 
 class MyApp(Node, ):
     def __init__(self):
