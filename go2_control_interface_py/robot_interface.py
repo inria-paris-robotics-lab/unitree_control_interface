@@ -3,7 +3,7 @@ from rcl_interfaces.msg import ParameterDescriptor
 from enum import Enum, auto
 
 from typing import List, Callable
-from unitree_go.msg import LowCmd, LowState
+from unitree_hg.msg import LowCmd, LowState
 from std_msgs.msg import Bool
 from unitree_sdk2py.utils.crc import CRC
 
@@ -11,19 +11,20 @@ from unitree_sdk2py.utils.crc import CRC
 class Go2RobotInterface:
     # TODO: Populate this array programmatically
     # fmt: off
-    __urdf_to_unitree_index = [
-            3,  4,  5,
-            0,  1,  2,
-            9, 10, 11,
-            6,  7,  8,
-        ] # re-ordering joints
+    __urdf_to_unitree_index = (
+        0, 1, 2, 3,  4,  5,         # left leg
+        6, 7, 8, 9, 10, 11,         # right leg
+        12,                         # waist (here the two locked DoF - 13 and 14 - are skipped)
+        15, 16 ,17, 18 ,19, 20, 21, # left arm
+        22, 23, 24, 25, 26, 27, 28  # right arm
+    )
     # fmt: on
 
     # State callback variable
     user_cb = None
     start_routine = None
 
-    N_DOF = 12
+    N_DOF = 27
 
     def __init__(self, node: Node, *, joints_filter_fq_default=-1.0):
         self._is_ready = False
@@ -51,7 +52,7 @@ class Go2RobotInterface:
         ).value  # By default no filter
         self.robot_fq = self.node.declare_parameter(
             "robot_fq",
-            500.0,
+            1000.0,
             ParameterDescriptor(description="Frequency at which the robot state messages are published"),
         ).value  # 500Hz for the Go2
 
@@ -147,26 +148,8 @@ class Go2RobotInterface:
         msg = LowCmd()
 
         # Init header
-        msg.head = 0xFE, 0xEF
-
-        # Unused fields
-        msg.level_flag = 0
-        msg.frame_reserve = 0
-        msg.sn = 0, 0
-        msg.bandwidth = 0
-        msg.fan = 0, 0
-        msg.reserve = 0
-        msg.led = [0] * 12
-
-        # battery
-        msg.bms_cmd.off = 0
-        msg.bms_cmd.reserve = 0, 0, 0
-
-        # Version
-        msg.sn = 0, 0
-
-        # Gpio
-        msg.gpio = 0
+        msg.mode_pr = 0  # Parallel mechanism (ankle and waist) control mode (default 0) 0:PR, 1:AB
+        msg.mode_machine = 6  # G1 Type：4：23-Dof;5:29-Dof;6:27-Dof(29Dof Fitted at the waist)
 
         # Scaling
         k_ratio = self.scaling_gain if scaling else 1.0
@@ -181,7 +164,7 @@ class Go2RobotInterface:
 
         # Compute CRC here
         # TODO: Cleaner CRC computation
-        msg.crc = self.crc._CRC__Crc32(self.crc._CRC__PackLowCmd(msg))
+        msg.crc = self.crc._CRC__Crc32(self.crc._CRC__PackHGLowCmd(msg))
         self._cmd_publisher.publish(msg)
 
     def __state_cb(self, msg: LowState):
@@ -251,7 +234,7 @@ class GoToStartRoutine:
         self.kd_cmd = [0.0] * self.robot.N_DOF
 
         # Gains for position control
-        self.kp = [150.0] * self.robot.N_DOF
+        self.kp = [75.0] * self.robot.N_DOF
         self.kd = [1.0] * self.robot.N_DOF
 
     def start(self, q_goal: list[float], *, duration: float = 5.0, goto_config=True):

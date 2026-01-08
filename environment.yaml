@@ -1,4 +1,4 @@
-name: go2_control_interface
+name: g1_control_interface
 channels:
 - conda-forge
 - robostack-staging
