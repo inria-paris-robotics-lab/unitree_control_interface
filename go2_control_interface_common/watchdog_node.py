@@ -5,6 +5,7 @@ from rclpy.node import Node
 from go2_control_interface_py.robot_interface import Go2RobotInterface
 from unitree_hg.msg import LowCmd
 from std_msgs.msg import Bool
+from sensor_msgs.msg import Joy
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 
 
@@ -52,6 +53,7 @@ class WatchDogNode(Node, Go2RobotInterface):
 
         self.lowcmd_subscription = self.create_subscription(LowCmd, "/lowcmd", self.__cmd_cb, 10)
         self.start_subscription = self.create_subscription(Bool, "/watchdog/arm", self.__arm_disarm_cb, 10)
+        self.soft_e_stop_subscription = self.create_subscription(Joy, "/joy", self.__controller_cb, 10)
         self.timer = self.create_timer(1.0 / self.freq, self.timer_callback)
 
         self.register_callback(self.__state_cb)
@@ -73,6 +75,10 @@ class WatchDogNode(Node, Go2RobotInterface):
 
         self.is_waiting = False
         self.cnt = 0  # Reset timeout
+
+    def __controller_cb(self, msg):
+        if any(msg.buttons[:4]):
+            self._stop_robot("Controller button pressed.")
 
     def __state_cb(self, t, q, dq, ddq):
         # Joint bounds
