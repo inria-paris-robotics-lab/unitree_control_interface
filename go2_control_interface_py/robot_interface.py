@@ -96,7 +96,7 @@ class Go2RobotInterface:
         self.transition_start_t = self.node.get_clock().now().nanoseconds / 1.0e9
 
         self._is_ready = True
-        self.node.get_logger().info("Go2RobotInterface: Unlocking robot.")
+        self.node.get_logger().info("Go2RobotInterface: Unlocking robot...")
 
     def send_command(self, q: List[float], v: List[float], tau: List[float], kp: List[float], kd: List[float]):
         assert self.can_be_controlled(), (
@@ -109,6 +109,7 @@ class Go2RobotInterface:
                 ratio = 1.0
                 # Transition over disable it
                 self.transition_start_t = None
+                self.node.get_logger().info("Go2RobotInterface: Robot unlocked.")
 
             q_cmd = [0.0] * self.N_DOF
             v_cmd = [0.0] * self.N_DOF
