@@ -38,18 +38,18 @@ class MyApp(
         foot_points = np.array(
             [[0.12, 0.03, -0.035], [-0.06, 0.03, -0.035], [-0.06, -0.03, -0.035], [0.12, -0.03, -0.035]]
         )
-        self.model_handler = RobotModelHandler(self.pin_robot_wrapper.model, "half_sitting", base_frame_name)
+        self.model_handler = RobotModelHandler(self.pin_robot_wrapper.model, "slightly_forward", base_frame_name)
         self.model_handler.addQuadFoot("left_ankle_roll_link", base_frame_name, foot_points)
         self.model_handler.addQuadFoot("right_ankle_roll_link", base_frame_name, foot_points)
         self.data_handler = RobotDataHandler(self.model_handler)
 
         kino_ID_settings = KinodynamicsIDSettings()
-        kino_ID_settings.kp_base = 150.0
-        kino_ID_settings.kp_posture = 125.0
+        kino_ID_settings.kp_base = 7.0
+        kino_ID_settings.kp_posture = 50.0
         kino_ID_settings.kp_contact = 10.0
         kino_ID_settings.w_base = 100.0
-        kino_ID_settings.w_posture = 100.0  # 1.0
-        kino_ID_settings.w_contact_force = 0
+        kino_ID_settings.w_posture = 10.0
+        kino_ID_settings.w_contact_force = 0.001
         kino_ID_settings.w_contact_motion = 1.0
 
         self.kino_ID = KinodynamicsID(self.model_handler, 1.0 / 500.0, kino_ID_settings)
@@ -57,10 +57,8 @@ class MyApp(
         self.nq = self.model_handler.getModel().nq
         self.nv = self.model_handler.getModel().nv
 
-        self.kp = ([150.0, 150.0, 50.0, 50.0] + [50.0] * 2) * 2 + [50.0] + ([50.0, 50.0, 50.0, 50.0] + [50.0] * 3) * 2
-        self.kd = ([2.0, 2.0, 1.0, 1.0] + [1.0] * 2) * 2 + [1.0] + ([1.0, 1.0, 1.0, 1.0] + [1.0] * 3) * 2
-        # self.kp = [kp / 10.0 for kp in self.kp]
-        # self.kd = [kd / 10.0 for kd in self.kd]
+        self.kp = [7.5] * (self.nv - 6)
+        self.kd = [0.1] * (self.nv - 6)
 
         # The robot will move by itself to the q_start configuration and wait for you first command
         self.robot_if.start_async(self.model_handler.getReferenceState()[7 : self.nq])
@@ -109,7 +107,7 @@ class MyApp(
         v_meas = np.concatenate((base_vel, np.array(dq)))
 
         if self.robot_if.can_be_controlled():
-            tau_cmd = self.kino_ID.solve(t, q_meas, v_meas)
+            tau_cmd = self.kino_ID.solve(t, q_meas, np.zeros_like(v_meas))
 
             dt = 0.001
             a_next = self.kino_ID.getAccelerations()
