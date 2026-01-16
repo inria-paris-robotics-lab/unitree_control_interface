@@ -79,6 +79,9 @@ class WatchDogNode(Node, Go2RobotInterface):
     def __controller_cb(self, msg):
         if any(msg.buttons[:4]):
             self._stop_robot("Controller button pressed.")
+            self.get_logger().warning(
+                "Controller button pressed, robot (already?) stopped.", throttle_duration_sec=0.25
+            )
 
     def __state_cb(self, t, q, dq, ddq):
         # Joint bounds

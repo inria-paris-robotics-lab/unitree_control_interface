@@ -23,15 +23,12 @@ class MyApp(
 
         self.pin_robot_wrapper = loadG1()
 
-        self.robot_if = Go2RobotInterface(self, joints_filter_fq_default=150.0)
+        self.prev_base_pose = None
+
+        self.robot_if = Go2RobotInterface(self, joints_filter_fq_default=250.0)
         self.robot_if.register_callback(self._sensor_reading_callback)
 
         self._state_subscription = self.create_subscription(Empty, "unlock_ctrl", self.__unlock_cb, 1)
-
-        # self.viz = MeshcatVisualizer(self.pin_robot_wrapper.model, self.pin_robot_wrapper.collision_model, self.pin_robot_wrapper.visual_model)
-        # self.viz.initViewer(open=False, zmq_url="tcp://127.0.0.1:6000")
-        # self.viz.loadViewerModel()
-        # self.viz.display(np.array([0,0,0, 0,0,0,1] + [0.] * 27))
 
         # Create inverse dynamic
         base_frame_name = "torso_link"
@@ -91,23 +88,24 @@ class MyApp(
             for foot_frame_id in feet_frame_ids
         ]
         w_v_base = pin.getFrameVelocity(model, data, base_frame_id, pin.ReferenceFrame.WORLD)
-        w_v_feet_base = w_v_base - sum(w_v_feet, start=pin.Motion()) / len(w_v_feet)
-        v_feet_base = oMbase.actInv(w_v_feet_base)
+        w_v_base_feet = w_v_base - sum(w_v_feet, start=pin.Motion()) / len(w_v_feet)
 
-        return pin.SE3ToXYZQUAT(feetavgMbase), v_feet_base.vector
+        # WORLD to LOCAL_WORLD_ALIGNED
+        v_base_feet = pin.Motion(
+            linear=w_v_base_feet.linear,
+            angular=w_v_base_feet.angular + np.cross(w_v_base_feet.linear, oMbase.translation),
+        )
+
+        return pin.SE3ToXYZQUAT(feetavgMbase), v_base_feet.vector
 
     def _sensor_reading_callback(self, t, q, dq, ddq):
-        # Reading timestamp, positions, velocities, accelerations
-        # (Should be received at 500Hz approx.)
-        # self.viz.display(np.array([0,0,0, 0,0,0,1] + q))
-
         # Sending commands
         base_pose, base_vel = self._compute_base_pose_vel(q, dq)
         q_meas = np.concatenate((base_pose, np.array(q)))
-        v_meas = np.concatenate((base_vel, np.array(dq)))
+        v_meas = np.concatenate((np.zeros_like(base_vel), np.array(dq)))
 
         if self.robot_if.can_be_controlled():
-            tau_cmd = self.kino_ID.solve(t, q_meas, np.zeros_like(v_meas))
+            tau_cmd = self.kino_ID.solve(t, q_meas, v_meas)
 
             dt = 0.001
             a_next = self.kino_ID.getAccelerations()
