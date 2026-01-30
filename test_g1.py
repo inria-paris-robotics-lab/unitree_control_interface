@@ -41,7 +41,7 @@ class MyApp(
         self.data_handler = RobotDataHandler(self.model_handler)
 
         kino_ID_settings = KinodynamicsIDSettings()
-        kino_ID_settings.kp_base = 7.0
+        kino_ID_settings.kp_base = 50.0
         kino_ID_settings.kp_posture = 50.0
         kino_ID_settings.kp_contact = 10.0
         kino_ID_settings.w_base = 100.0
@@ -102,7 +102,7 @@ class MyApp(
         # Sending commands
         base_pose, base_vel = self._compute_base_pose_vel(q, dq)
         q_meas = np.concatenate((base_pose, np.array(q)))
-        v_meas = np.concatenate((np.zeros_like(base_vel), np.array(dq)))
+        v_meas = np.concatenate((base_vel, np.array(dq)))
 
         if self.robot_if.can_be_controlled():
             tau_cmd = self.kino_ID.solve(t, q_meas, v_meas)
