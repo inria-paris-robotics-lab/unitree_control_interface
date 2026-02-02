@@ -122,12 +122,12 @@ Here is the boilerplate/example code to write your app
 ```python
 import rclpy
 from rclpy.node import Node
-from unitree_control_interface_py import Go2RobotInterface
+from unitree_control_interface_py import Go2ControlInterface
 
 class MyApp(Node, ):
     def __init__(self):
         Node.__init__(self, "my_app")
-        self.robot_if = Go2RobotInterface(self)
+        self.robot_if = Go2ControlInterface(self)
         self.robot_if.register_callback(self._sensor_reading_callback)
 
         # The robot will move by itself to the q_start configuration and wait for your first command
