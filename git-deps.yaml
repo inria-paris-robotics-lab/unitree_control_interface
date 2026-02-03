@@ -7,9 +7,9 @@ repositories:
     type: git
     url: git@github.com:inria-paris-robotics-lab/unitree_description.git
     version: master
-  go2_simulation:
+  unitree_simulation:
     type: git
-    url: git@github.com:inria-paris-robotics-lab/go2_simulation.git
+    url: git@github.com:inria-paris-robotics-lab/unitree_simulation.git
     version: master
   rmw_cyclonedds:
     type: git

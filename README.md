@@ -74,7 +74,7 @@ mamba activate unitree_control_interface
 source install/setup.bash
 source <(ros2 run unitree_control_interface autoset_environment_dds.py REAL)
 ```
-##### In simulation (using go2_simulation)
+##### In simulation (using unitree_simulation)
 ```bash
 mamba activate unitree_control_interface
 source install/setup.bash
