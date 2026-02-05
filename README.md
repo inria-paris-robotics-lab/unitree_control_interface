@@ -84,6 +84,8 @@ source <(ros2 run unitree_control_interface autoset_environment_dds.py SIMULATIO
 
 ##### GO2/G1 topics not appearing on local machine:
 Your firewall might block communication between your machine and the go2/g1 (topics such as `/lowstate`,`/api/...` will not appear), in that case deactivate your firewall with :
+<details>
+<summary>Click to toggle contents of `code`</summary>
 ```bash
 sudo ufw disable
 ```
@@ -100,6 +102,7 @@ Vers                       Action      De
 Anywhere                   ALLOW IN    192.168.123.222/udp
 192.168.123.222/udp        ALLOW IN    Anywhere
 ```
+</details>
 
 #### 1. Shutdown unitree default control
 When powered on, the go2 have some default unitree controllers running, to make it stand up and walk. It needs to but shutdown as it is constantly spamming the motor with its commands.
@@ -114,7 +117,7 @@ The unitree_control_interface won't start if this node is node running.
 
 To launch it:
 ```bash
-ros2 launch unitree_control_interface watchdog.launch.py
+ros2 launch unitree_control_interface watchdog.launch.py robot_type:=g1
 ```
 
 #### 3. Run your app
