@@ -80,12 +80,12 @@ mamba activate unitree_control_interface
 source install/setup.bash
 source <(ros2 run unitree_control_interface autoset_environment_dds.py SIMULATION)
 ```
-* Replace `---absolute path to cyclonedds workspace---`
 
 ##### GO2/G1 topics not appearing on local machine:
 Your firewall might block communication between your machine and the go2/g1 (topics such as `/lowstate`,`/api/...` will not appear), in that case deactivate your firewall with :
 <details>
 <summary>Click to toggle contents of `code`</summary>
+
 ```bash
 sudo ufw disable
 ```
