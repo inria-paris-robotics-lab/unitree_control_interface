@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 import sys
-from go2_control_interface_common.autodetect_network_if import Go2NetworkInfo
+from unitree_control_interface_common.autodetect_network_if import UnitreeNetworkInfo
 
 
-class Go2EnvSetup:
+class UnitreeEnvSetup:
     def generateEnv(self, sim: bool) -> None:
-        go2_net_info = Go2NetworkInfo()
-        ifname, ifip = go2_net_info.getGo2InterfaceNameIp()
+        unitree_net_info = UnitreeNetworkInfo()
+        ifname, ifip = unitree_net_info.getRobotInterfaceNameIp()
 
         self.output("\033[1;4mExecuting:\033[0m", display_only=True)
         self.output("export RCUTILS_COLORIZED_OUTPUT=1")
@@ -45,8 +45,8 @@ def main(args=None):
     except ValueError:
         print("Error expecting exactly one argument being SIMULATION or REAL")
         exit()
-    go2_env = Go2EnvSetup()
-    go2_env.generateEnv(sim=is_sim)
+    robot_env = UnitreeEnvSetup()
+    robot_env.generateEnv(sim=is_sim)
 
 
 if __name__ == "__main__":

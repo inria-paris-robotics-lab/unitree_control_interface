@@ -2,13 +2,12 @@
 
 import rclpy
 from rclpy.node import Node
-from go2_control_interface_py.robot_interface import Go2RobotInterface
-from unitree_go.msg import LowCmd
+from unitree_control_interface_py import Go2ControlInterface, G1ControlInterface
 from std_msgs.msg import Bool
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 
 
-class WatchDogNode(Node, Go2RobotInterface):
+class WatchDogNode(Node):
     """
     The watchdog has 3 states :
      state | is_stopped | is_waiting | description
@@ -30,7 +29,16 @@ class WatchDogNode(Node, Go2RobotInterface):
 
     def __init__(self):
         Node.__init__(self, "watchdog")
-        Go2RobotInterface.__init__(self, self, joints_filter_fq_default=200)
+
+        # Get robot type and create interface
+        self.robot_if = None
+        robot_type = self.declare_parameter("robot_type", rclpy.Parameter.Type.STRING).value
+        if robot_type.lower() == "go2":
+            self.robot_if = Go2ControlInterface(self, joints_filter_fq_default=200)
+        elif robot_type.lower() == "g1":
+            self.robot_if = G1ControlInterface(self, joints_filter_fq_default=200)
+        else:
+            assert False, f"Invalid robot_type: '{robot_type}', expected 'g1' or 'go2'"
 
         # Watchdog timer parameters
         self.freq = self.declare_parameter("freq", 100).value
@@ -40,9 +48,11 @@ class WatchDogNode(Node, Go2RobotInterface):
         self.q_max = self.declare_parameter("q_max", rclpy.Parameter.Type.DOUBLE_ARRAY).value
         self.q_min = self.declare_parameter("q_min", rclpy.Parameter.Type.DOUBLE_ARRAY).value
         self.margin_duration = self.declare_parameter("margin_duration", rclpy.Parameter.Type.DOUBLE_ARRAY).value
-        assert len(self.q_max) == 12, "Parameter q_max should be length 12"
-        assert len(self.q_min) == 12, "Parameter q_min should be length 12"
-        assert len(self.margin_duration) == 12, "Parameter margin_duration should be length 12"
+        assert len(self.q_max) == self.robot_if.N_DOF, f"Parameter q_max should be length {self.robot_if.N_DOF}"
+        assert len(self.q_min) == self.robot_if.N_DOF, f"Parameter q_min should be length {self.robot_if.N_DOF}"
+        assert len(self.margin_duration) == self.robot_if.N_DOF, (
+            f"Parameter margin_duration should be length {self.robot_if.N_DOF}"
+        )
         assert all(d >= 0.0 for d in self.margin_duration), "Parameter margin_duration should be non negative"
 
         # Watchdog timer logic
@@ -50,11 +60,13 @@ class WatchDogNode(Node, Go2RobotInterface):
         self.is_stopped = False
         self.is_waiting = False
 
-        self.lowcmd_subscription = self.create_subscription(LowCmd, "/lowcmd", self.__cmd_cb, 10)
+        self.lowcmd_subscription = self.create_subscription(
+            self.robot_if.get_msgs_type()[1], "/lowcmd", self.__cmd_cb, 10
+        )
         self.start_subscription = self.create_subscription(Bool, "/watchdog/arm", self.__arm_disarm_cb, 10)
         self.timer = self.create_timer(1.0 / self.freq, self.timer_callback)
 
-        self.register_callback(self.__state_cb)
+        self.robot_if.register_callback(self.__state_cb)
 
         self._is_safe_publisher = self.create_publisher(
             Bool, "/watchdog/is_safe", QoSProfile(depth=10, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
@@ -128,7 +140,15 @@ class WatchDogNode(Node, Go2RobotInterface):
         self.is_waiting = False
 
     def _send_kill_cmd(self):
-        self._send_command([0.0] * 12, [0.0] * 12, [0.0] * 12, [0.0] * 12, [1.0] * 12, scaling=False, skip_safety=True)
+        self.robot_if._send_command(
+            [0.0] * self.robot_if.N_DOF,
+            [0.0] * self.robot_if.N_DOF,
+            [0.0] * self.robot_if.N_DOF,
+            [0.0] * self.robot_if.N_DOF,
+            [1.0] * self.robot_if.N_DOF,
+            scaling=False,
+            skip_safety=True,
+        )
         # Send info to other nodes
         is_safe_msg = Bool()
         is_safe_msg.data = False

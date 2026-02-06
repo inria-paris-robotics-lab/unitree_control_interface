@@ -14,4 +14,4 @@ watchdog:
                       0.06, 0.06, 0.04,
                       0.06, 0.06, 0.04,
                       0.06, 0.06, 0.04]
-        # See https://github.com/inria-paris-robotics-lab/go2_control_interface/issues/11#issuecomment-2995477021
+        # See https://github.com/inria-paris-robotics-lab/unitree_control_interface/issues/11#issuecomment-2995477021

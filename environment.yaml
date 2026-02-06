@@ -1,4 +1,4 @@
-name: go2_control_interface
+name: unitree_control_interface
 channels:
 - conda-forge
 - robostack-staging

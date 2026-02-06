@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(go2_control_interface)
+project(unitree_control_interface)
 
 # ###################
 # # Python Packages #
@@ -18,7 +18,7 @@ ament_python_install_package(${COMMON_PROJECT_NAME})
 ###############
 # Cpp Package #
 ###############
-set(CPP_LIB_NAME ${PROJECT_NAME}_cpp)
+set(CPP_LIB_NAME go2_control_interface_cpp)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
