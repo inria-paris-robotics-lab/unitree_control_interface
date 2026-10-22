@@ -134,25 +134,27 @@ class MyApp(Node, ):
         self.robot_if.register_callback(self._sensor_reading_callback)
 
         # The robot will move by itself to the q_start configuration and wait for your first command
-        start_q = [0.] *12
-        self.robot_if.start_async(start_q)
+        self.q_base = [ 0.0,  0.96,  -1.8385,
+            0.0,  0.96,  -1.8385,
+            0.0,  1.007, -1.8385,
+            0.0,  1.007, -1.8385 ]
+        self.robot_if.start_async(self.q_base)
 
     def _sensor_reading_callback(self, t, q, dq, ddq):
         # Reading timestamp, positions, velocities, accelerations
         # (Should be received at 500Hz approx.)
-
         # Sending commands
-        q_des   = [0.] * 12
+        q_des   = self.q_base
         v_des   = [0.] * 12
         tau_des = [0.] * 12
-        kp      = [0.] * 12
+        kp      = [100] * 12
         kd      = [0.] * 12
 
         # Call this once you app is ready to send command. (In this case can be sent directly)
         if self.robot_if.can_be_unlocked():
             # The robot will stay in position control at q_start config until you call that routine
             # The 1.0 argument will make the interface transition smoothly from the position control to your commands over a 1.0s duration
-            self.robot_if.unlock(1.0)
+            self.robot_if.unlock(transition_duration = 1.0)
 
         # This flag is True once both the robot reached the start configuration and self.robot_if.unlock() has been called.
         if self.robot_if.can_be_controlled():
@@ -170,4 +172,9 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+```
+
+You can try the above script using
+```bash
+python examples/go2_stand_and_hold.py
 ```
